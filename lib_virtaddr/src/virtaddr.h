@@ -28,6 +28,7 @@ typedef enum{
   OT_LOCALRAM,  //no paging necessary (each request go trough chan/interface, no cache)
   OT_REMOTERAM, //probably a caching mechanishm may be required, but ... yeah...
   OT_SDRAM,     //planned to be cached
+  OT_FILE,
   OT_FLASH,     //planned to be cached
   OT_ROM        //don't need really
 } tOriginType;
@@ -64,7 +65,9 @@ typedef struct sVirtPage{
 
 //preliminary pager interface, some pageing strategy parametrization is a must.
 interface virt_pager {
-    void loadPage(tVirtPage*unsafe page);
+    void loadPage(tVirtPage*unsafe page, uintptr_t& address );
+    void storePage(tVirtPage*unsafe page);
+    void commit();
 };
 
 //requested EXTERNAL memory address space, which can contains more then one paged area.
@@ -95,9 +98,9 @@ void vsInit();
 unsigned vsConfigSegm(unsigned id, unsigned base, unsigned len, tOriginType t);
 
 // config specific mem extender if to specific segment. unsafe ptr is used here.
-void vsInstallSegmIfunsafe(tVirtSegm& vs, client interface memory_extender* unsafe imem);
+void vsInstallSegmIfunsafe(tVirtSegm& vs, client interface memory_extender* unsafe imem, client interface virt_pager* unsafe ipgr);
 // config specific mem extender if to specific segment. movable ptr is used here.
-void vsInstallSegmIfmovable(tVirtSegm& vs, client interface memory_extender* movable imem);
+void vsInstallSegmIfmovable(tVirtSegm& vs, client interface memory_extender* movable imem, client interface virt_pager* unsafe ipgr);
 
 //config local page: used in which segment, drifted by offset
 void vsConfigPage(tVirtPage& vp, tVirtSegm& vs, unsigned offset);
@@ -112,7 +115,8 @@ unsafe void * unsafe vsTranslate(uintptr_t address, unsigned char segm);
 void virtaddr_ram(server interface memory_extender mem, server interface virt_pager pgr);
 //service entry point for sdram backend
 void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr);
-
+//service entry point for file backend
+void virtaddr_devpc_file(server interface memory_extender mem, server interface virt_pager pgr);
 /*
 //TODO: as a long term goal, we need to keep in mind there is overlays too. Here is the descriptor from xmos overlay imp...
 //there is no virtualization, but external address is specified of course.

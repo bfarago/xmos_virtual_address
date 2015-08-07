@@ -6,7 +6,10 @@
  */
 #include "virtaddr.h"
 #include "memory_extender.h"
-
+#include <print.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <syscall.h>
 /*
 This implements the memory operations, can be used in different (more than one) tiles at the end.
  */
@@ -68,13 +71,9 @@ void virtaddr_ram(server interface memory_extender mem, server interface virt_pa
   while (1) {
     select {
     case local_imp(mem);
-    case pgr.loadPage(tVirtPage*unsafe page):
-        unsafe{
-            if (page->length){
-                //NOOOOTHING
-            }
-        }
-        break;
+    case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ): break;
+    case pgr.storePage(tVirtPage*unsafe page): break;
+    case pgr.commit(): break;
     }
   }
 }
@@ -84,13 +83,110 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
   while (1) {
     select {
     case local_imp(mem);
-    case pgr.loadPage(tVirtPage*unsafe page):
+    case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ):
         // sdram specific strategy will be here
         break;
+    case pgr.storePage(tVirtPage*unsafe page): break;
+    case pgr.commit(): break;
     }
   }
 }
+void virtaddr_devpc_file(server interface memory_extender mem, server interface virt_pager pgr){
+    #define BUFFER_SIZE (16)
+    while (1) {
+       select {
+       case local_imp(mem);
+       case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ):
+            {
+                if (!page){
+                   printstrln("Error: configuration");
+                   break;
+                }
 
+                int fd = -1;
+                unsafe{
+                    char* buf;
+                    if (!page->length) {//not yet allocated
+                       page->length=BUFFER_SIZE;
+                       buf=malloc(BUFFER_SIZE);
+                       page->localMemPtr=(uintptr_t)buf;
+                       page->flags&=~PF_MODIFIED;
+                    }else{//already allocated
+                       buf =(char*)page->localMemPtr;
+                    }
+                    uintptr_t loff=address - page->base;
+                    uintptr_t lend=page->length+page->base;
+                    if ((address<lend)&&(loff<page->length)){
+                        address=page->localMemPtr+loff; //cache hit
+                        page->flags|=PF_MODIFIED;
+                        break;
+                    }
+                    //page change
+                    fd = _open("external.ram", O_RDWR|O_BINARY, 0);
+                    if (fd == -1) {
+                        fd = _open("external.ram", O_RDWR|O_BINARY| O_CREAT, S_IREAD | S_IWRITE);
+
+                    }
+
+                    if (page->flags& PF_MODIFIED){ //flush previous
+                        _lseek(fd, page->base, SEEK_SET);
+                        int res=_write(fd, buf, page->length);
+                        if (res!=page->length){
+                            printstrln("Error: flush");
+                            break;
+                        }
+                        page->flags&=~PF_MODIFIED;
+                    }
+
+                    ___off_t nend= page->length+ address;
+                    ___off_t flen= _lseek(fd, 0, SEEK_END);
+                    if (nend>flen){
+                        printstrln("warning: flen less than needed");
+                        do{
+                            int res=_write(fd, buf, BUFFER_SIZE);
+                            flen= _lseek(fd, 0, SEEK_END);
+                        }while(nend>flen);
+                    }
+                    flen= _lseek(fd, address, SEEK_SET);
+                    int res=_read(fd, buf, page->length);
+                    page->base=address;
+                    address=page->localMemPtr; //TODO: offset if aligned?!
+                    if (_close(fd)!=0){
+                        printstrln("Error: _close failed.");
+                        break;
+                    }
+                    page->flags|=PF_MODIFIED;
+                };
+
+
+           break;
+           }
+       case pgr.storePage(tVirtPage*unsafe page):
+           {
+           int fd = _open("external.ram", O_RDWR|O_BINARY| O_CREAT, S_IREAD | S_IWRITE);
+                  if (fd == -1) {
+                      printstrln("Error: _open failed");
+                      break;
+                  }
+                  unsafe{
+                      unsigned address=page->base;
+                      _lseek(fd, address, SEEK_SET);
+                      char* buf =(char*)page->localMemPtr;
+
+                      int res=_write(fd, buf, page->length);
+                  };
+                  if (_close(fd)!=0){
+                      printstrln("Error: _close failed.");
+                      break;
+                  }
+           }
+           break;
+       case pgr.commit():
+           //save all pages
+           break;
+       }
+     }
+}
 /**
  * Convert an address in external memory to a pointer. Any memory access via
  * this pointer will trigger a load / store exception. On an load / store
@@ -121,14 +217,16 @@ unsigned vsConfigSegm( unsigned segm, unsigned base, unsigned len, tOriginType t
 
     return 0;
 }
-void vsInstallSegmIfunsafe(tVirtSegm& vs, client interface memory_extender* unsafe imem){
+void vsInstallSegmIfunsafe(tVirtSegm& vs, client interface memory_extender* unsafe imem, client interface virt_pager* unsafe ipgr){
     unsafe{
         vs.imem=imem;
+        vs.ipgr=ipgr;
     }
 }
-void vsInstallSegmIfmovable(tVirtSegm& vs, client interface memory_extender* movable imem){
+void vsInstallSegmIfmovable(tVirtSegm& vs, client interface memory_extender* movable imem, client interface virt_pager* unsafe ipgr){
     unsafe{ //convert to unsafe ptr
         vs.imem=imem;
+        vs.ipgr=ipgr;
     }
 }
 tVirtPage*unsafe vsGetUnusedPage(){
@@ -209,7 +307,11 @@ tVirtPage*unsafe vsResolveVirtualAddress(uintptr_t &address){
             address=eoffs;
             return pPage; // just write RAM, so no paging necessary here
         }
-        if (vs.ipgr) vs.ipgr->loadPage(pPage); //do some check, load the external window to the page buffer ?
+        if (vs.ipgr) {
+            address=eoffs;
+            vs.ipgr->loadPage(pPage, address); //do some check, load the external window to the page buffer ?
+            return pPage;
+        }
         //search. Probably move to the paging interface... This part will be reorganised soon.
         while( (pPage->base > eoffs) || (eoffs>=(pPage->base+pPage->length)) ){ //search O(n)
             pPage=pPage->next;
