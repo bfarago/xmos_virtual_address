@@ -9,7 +9,7 @@ TARGET = SLICEKIT-L16
 APP_NAME = app_test_vm
 
 # The USED_MODULES variable lists other module used by the application.
-USED_MODULES = lib_virtaddr
+USED_MODULES = lib_sdram lib_virtaddr
 
 # The flags passed to xcc when building the application
 # You can also set the following to override flags for a particular language:

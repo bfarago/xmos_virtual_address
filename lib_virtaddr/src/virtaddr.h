@@ -105,6 +105,7 @@ void vsInstallSegmIfmovable(tVirtSegm& vs, client interface memory_extender* mov
 //config local page: used in which segment, drifted by offset
 void vsConfigPage(tVirtPage& vp, tVirtSegm& vs, unsigned offset);
 
+void vsSetBufferForPage(tVirtPage& vp, unsigned* unsafe buf, unsigned len);
 //Resolver (search in segm, seach in cache/page, add if needed, resolve to local buff address. returns by null ptr if err.
 tVirtPage*unsafe vsResolveVirtualAddress(uintptr_t &address);
 
@@ -114,7 +115,7 @@ unsafe void * unsafe vsTranslate(uintptr_t address, unsigned char segm);
 //service entry point for ram backend
 void virtaddr_ram(server interface memory_extender mem, server interface virt_pager pgr);
 //service entry point for sdram backend
-void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr);
+void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr, streaming chanend c_sdram_client);
 //service entry point for file backend
 void virtaddr_devpc_file(server interface memory_extender mem, server interface virt_pager pgr);
 /*

@@ -6,10 +6,15 @@
  */
 #include "virtaddr.h"
 #include "memory_extender.h"
+#include <sdram.h>
 #include <print.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <syscall.h>
+
+#define BUFFER_SIZE (16)
+
 /*
 This implements the memory operations, can be used in different (more than one) tiles at the end.
  */
@@ -78,21 +83,78 @@ void virtaddr_ram(server interface memory_extender mem, server interface virt_pa
   }
 }
 
-void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr)
+void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr, streaming chanend c_sdram_client)
 {
-  while (1) {
-    select {
-    case local_imp(mem);
-    case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ):
-        // sdram specific strategy will be here
-        break;
-    case pgr.storePage(tVirtPage*unsafe page): break;
-    case pgr.commit(): break;
+    s_sdram_state sdram_state_client;
+    sdram_init_state(c_sdram_client, sdram_state_client);
+    unsigned * movable buffer;
+    while (1) {
+        select {
+            case local_imp(mem);
+            case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ):
+                unsafe{
+                    /*if (!page){
+                       printstrln("Error: configuration");
+                       break;
+                    }
+                    if (page==0xffffffff){//debugger says page is -1 but, not!
+                       printstrln("Error: configuration");
+                       break;
+                    }
+                    if (page->origin !=OT_SDRAM){
+                        printstrln("Error: configuration");
+                        break;
+                    }*/
+                    if (!page->length) {//not yet allocated
+                       page->length=BUFFER_SIZE;
+                       unsigned*unsafe p =(unsigned * )malloc(BUFFER_SIZE);
+                       unsigned * movable pm=(unsigned * movable)p;
+                       buffer=move( pm ); //problematic point
+                       page->localMemPtr=(uintptr_t)buffer;
+                       page->flags&=~PF_MODIFIED;
+                    }else{//already allocated
+                       unsigned*unsafe p =(unsigned * )page->localMemPtr;
+                       unsigned * movable pm=(unsigned * movable)p;
+                       buffer =move(pm);
+                       //buffer =move(p);
+                    }
+                    uintptr_t loff=address - page->base;
+                    uintptr_t lend=page->length+page->base;
+                    if ((address<lend)&&(loff<page->length)){
+                        address=page->localMemPtr+loff; //cache hit
+                        page->flags|=PF_MODIFIED;
+                        break;
+                    }
+                    if (page->flags& PF_MODIFIED){ //flush previous
+                      int ret= sdram_write(c_sdram_client,sdram_state_client, page->base, page->length, move(buffer));
+                      sdram_complete(c_sdram_client, sdram_state_client, buffer);
+                      page->flags&=~PF_MODIFIED;
+                    }
+                    // sdram specific strategy will be here
+                    page->base=address;
+                    int ret= sdram_read(c_sdram_client,sdram_state_client, page->base, page->length, move(buffer));
+                    sdram_complete(c_sdram_client, sdram_state_client, buffer);
+
+                    address=page->localMemPtr; //TODO: offset if aligned?!
+                    page->flags|=PF_MODIFIED;
+                }
+                break;
+            case pgr.storePage(tVirtPage*unsafe page):
+               // int ret= sdram_write(c_sdram_client,sdram_state_client, page->base, page->length, buffer);
+               // sdram_complete(c_sdram_client, sdram_state_client, buffer);
+                    break;
+            case pgr.commit(): break;
+            /*case sdram_complete(c_sdram_client, sdram_state_client, buffer) : {
+                //from_dc.push(move(buffer_pointer), CMD_SUCCESS); //350us / 1us
+                //s.sdram_cmd_buffer_fill--;
+                //if there was a pending set_frame on this write then apply it.
+                break;
+            }*/
+        }
     }
-  }
 }
 void virtaddr_devpc_file(server interface memory_extender mem, server interface virt_pager pgr){
-    #define BUFFER_SIZE (16)
+
     while (1) {
        select {
        case local_imp(mem);
@@ -278,7 +340,12 @@ void vsConfigPage(tVirtPage& vp, tVirtSegm& vs, unsigned offset){
         r->next=&vp;
     }
 }
-
+void vsSetBufferForPage(tVirtPage& vp, unsigned* unsafe buf, unsigned len){
+    vp.length=len;
+    unsafe{
+    vp.localMemPtr=(uintptr_t)buf;
+    }
+}
 //Supervisor
 tVirtPage*unsafe vsResolveVirtualAddress(uintptr_t &address){
     //bit31 (msb) is allways 1 in virt addresses, but asm code already cleared.
