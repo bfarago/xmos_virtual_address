@@ -93,7 +93,7 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
             case local_imp(mem);
             case pgr.loadPage(tVirtPage*unsafe page, uintptr_t& address ):
                 unsafe{
-                    /*if (!page){
+                    if (!page){
                        printstrln("Error: configuration");
                        break;
                     }
@@ -104,19 +104,18 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
                     if (page->origin !=OT_SDRAM){
                         printstrln("Error: configuration");
                         break;
-                    }*/
+                    }
+
                     if (!page->length) {//not yet allocated
                        page->length=BUFFER_SIZE;
-                       unsigned*unsafe p =(unsigned * )malloc(BUFFER_SIZE);
-                       unsigned * movable pm=(unsigned * movable)p;
+                       unsigned * movable pm =(unsigned * movable)malloc(BUFFER_SIZE);
                        buffer=move( pm ); //problematic point
                        page->localMemPtr=(uintptr_t)buffer;
                        page->flags&=~PF_MODIFIED;
+                       page->base=address;
                     }else{//already allocated
-                       unsigned*unsafe p =(unsigned * )page->localMemPtr;
-                       unsigned * movable pm=(unsigned * movable)p;
+                       unsigned * movable pm=(unsigned * movable)page->localMemPtr;
                        buffer =move(pm);
-                       //buffer =move(p);
                     }
                     uintptr_t loff=address - page->base;
                     uintptr_t lend=page->length+page->base;

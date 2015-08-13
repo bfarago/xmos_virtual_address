@@ -21,7 +21,7 @@ old_kep:
 .cc_top kernel_stack.data
 .align 4
 kernel_stack:
-.space KERNEL_STACKWORDS
+.space KERNEL_STACKWORDS * 4
 .size kernel_stack, .-kernel_stack
 .cc_bottom kernel_stack.data
 
@@ -172,7 +172,7 @@ memory_extender_handler_install:
   stw r11, dp[old_kep]
   // Set ksp.
   ldaw r0, sp[0]
-  ldaw sp, dp[kernel_stack + 1024 - 4]
+  ldaw sp, dp[kernel_stack + KERNEL_STACKWORDS * 4 - 4]
   stw r0, sp[0]
   krestsp 0
   // Set kep.
@@ -196,8 +196,6 @@ memory_extender_handler_install:
 // encodings to a dense set of integers that can be used to index a lookup
 // table. The polynomials and lookup tables are generated using a brute force
 // search, see https://github.com/xcore/tool_map_generator.
-
-
 
 .set handler.nstackwords, 10 + \
   (memory_extender_st8.nstackwords $M memory_extender_st16.nstackwords \
@@ -288,10 +286,10 @@ long:
   add r11, r2, 2
   stw r11, sp[1]
   ld16s r2, r2[r3]
-  ldc r11, 0x3
+  ldc r11, 0x6
   crc32 r2, r11, r11
   bru r2
-  .jmptable long_st8, long_st16, unhandled, long_stw
+  .jmptable long_st16, long_st8, long_stw
 long_st8:
   bl get_reg
   bl memory_extender_st8

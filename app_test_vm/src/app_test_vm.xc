@@ -54,8 +54,14 @@ static void virtaddr_test(
     unsigned * unsafe p = vsTranslate((uintptr_t)g_testbuf, 1); //segm#1 local ram. Must be the right (local) segm, to point the right point.
 
 #define TEST1
-//#define TEST_SDRAM
+#define TEST_SDRAM
 
+    timer tmr; //Wait for other threads to start
+    int t;
+    tmr:>t;
+    tmr when timerafter(t+1000000) :> void;
+
+    printstrln("test");
 #ifdef TEST1
     printhexln((unsigned)p);
     *p += 1;
@@ -80,8 +86,9 @@ static void virtaddr_test(
     pgr[2].commit(); //not implemented yet. Pager will implements load and store page too.
 
     p = vsTranslate(128, 3); //step back, already in the file. Page swap. Write more than one page.
-    for (unsigned i=0; i<10; i++) p[i]=i; //bug: known, last page will not be stored yet. :(
-    //bug: only low byte is writed by the handler ? it looks like :/
+    for (unsigned i=0; i<10; i++,p++) *p=i; //bug: known, last page will not be stored yet. :(
+    //bug: only low byte is writed by the handler ? if p[i]=i is used... it looks like :/
+    p = vsTranslate(128, 3); //re
     for (int i=0; i<10; i++) if (p[i]!=i) {
         printhex(i);
         printhexln(p[i]);
@@ -92,9 +99,9 @@ static void virtaddr_test(
 
 #ifdef TEST_SDRAM
     p = vsTranslate(128, 2); //sdram
-    for (int i=0; i<10; i++)
-        p[i]=i; //bug: known, last page will not be stored yet. :(
-    //bug: only low byte is writed by the handler ? it looks like :/
+    for (int i=0; i<10; i++,p++){
+        *p=i; //bug: known, last page will not be stored yet. :(
+    }
     for (int i=0; i<10; i++) if (p[i]!=i) {
        printhexln(p[i]);
     }
