@@ -91,7 +91,6 @@ static void virtaddr_test(
 
     p = vsTranslate(128, 3); //step back, already in the file. Page swap. Write more than one page.
     for (unsigned i=0; i<10; i++,p++) *p=i; //bug: known, last page will not be stored yet. :(
-    //bug: only low byte is writed by the handler ? if p[i]=i is used... it looks like :/
     p = vsTranslate(128, 3); //re
     for (int i=0; i<10; i++) if (p[i]!=i) {
         printhex(i);
@@ -106,7 +105,7 @@ static void virtaddr_test(
     for (int i=0; i<10; i++,p++){
         *p=i; //bug: known, last page will not be stored yet. :(
     }
-    p = vsTranslate(128, 2); //sdram
+    p = vsTranslate(128, 2); //re
     for (int i=0; i<10; i++, p++) if (*p!=i) {
        printhexln(*p);
     }
