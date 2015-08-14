@@ -57,6 +57,7 @@ typedef struct sVirtPage{
     unsigned length; //length of the window
     unsigned offs;
     uintptr_t localMemPtr;
+    unsigned* movable buffer;
     struct sVirtPage*unsafe next;
     tPageFlags flags;
     tOriginType origin; //result type

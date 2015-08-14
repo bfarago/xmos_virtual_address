@@ -82,12 +82,33 @@ void virtaddr_ram(server interface memory_extender mem, server interface virt_pa
     }
   }
 }
-
+void virtaddr_sdramRead(tVirtPage*unsafe page, s_sdram_state & sdram_state_client, streaming chanend c_sdram_client){
+    unsafe{
+  //  *(unsigned*unsafe)&page->buffer= (unsigned * unsafe)page->localMemPtr;
+    //page->buffer=move(buffer);
+        if (page->buffer)
+        {
+            int ret= sdram_read(c_sdram_client, sdram_state_client, page->base, page->length, move(page->buffer));
+            sdram_complete(c_sdram_client, sdram_state_client, page->buffer);
+        }
+    }
+}
+void virtaddr_sdramWrite(tVirtPage*unsafe page, s_sdram_state & sdram_state_client, streaming chanend c_sdram_client){
+    unsafe{
+        //Problematic point
+        //  page->buffer= (unsigned * movable)page->localMemPtr;
+        //page->buffer=move(buffer);
+        if (page->buffer){
+            int ret= sdram_write(c_sdram_client, sdram_state_client, page->base, page->length, move(page->buffer));
+            sdram_complete(c_sdram_client, sdram_state_client, page->buffer);
+        }
+    }
+}
 void virtaddr_sdram(server interface memory_extender mem, server interface virt_pager pgr, streaming chanend c_sdram_client)
 {
     s_sdram_state sdram_state_client;
     sdram_init_state(c_sdram_client, sdram_state_client);
-    unsigned * movable buffer;
+
     while (1) {
         select {
             case local_imp(mem);
@@ -108,15 +129,12 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
 
                     if (!page->length) {//not yet allocated
                        page->length=BUFFER_SIZE;
-                       unsigned * movable pm =(unsigned * movable)malloc(BUFFER_SIZE);
-                       buffer=move( pm ); //problematic point
-                       page->localMemPtr=(uintptr_t)buffer;
+                       page->localMemPtr=(uintptr_t)malloc(BUFFER_SIZE);
+                       //page->buffer=page->localMemPtr;
                        page->flags&=~PF_MODIFIED;
                        page->base=address;
-                    }else{//already allocated
-                       unsigned * movable pm=(unsigned * movable)page->localMemPtr;
-                       buffer =move(pm);
                     }
+
                     uintptr_t loff=address - page->base;
                     uintptr_t lend=page->length+page->base;
                     if ((address<lend)&&(loff<page->length)){
@@ -124,16 +142,14 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
                         page->flags|=PF_MODIFIED;
                         break;
                     }
+
                     if (page->flags& PF_MODIFIED){ //flush previous
-                      int ret= sdram_write(c_sdram_client,sdram_state_client, page->base, page->length, move(buffer));
-                      sdram_complete(c_sdram_client, sdram_state_client, buffer);
-                      page->flags&=~PF_MODIFIED;
+                        virtaddr_sdramWrite(page, sdram_state_client, c_sdram_client);
+                        page->flags&=~PF_MODIFIED;
                     }
                     // sdram specific strategy will be here
                     page->base=address;
-                    int ret= sdram_read(c_sdram_client,sdram_state_client, page->base, page->length, move(buffer));
-                    sdram_complete(c_sdram_client, sdram_state_client, buffer);
-
+                    virtaddr_sdramRead(page, sdram_state_client, c_sdram_client);
                     address=page->localMemPtr; //TODO: offset if aligned?!
                     page->flags|=PF_MODIFIED;
                 }
@@ -342,8 +358,17 @@ void vsConfigPage(tVirtPage& vp, tVirtSegm& vs, unsigned offset){
 void vsSetBufferForPage(tVirtPage& vp, unsigned* unsafe buf, unsigned len){
     vp.length=len;
     unsafe{
-    vp.localMemPtr=(uintptr_t)buf;
+        vp.localMemPtr=(uintptr_t)buf;
+
+/*        unsigned * movable buffers[1]={(unsigned * movable)buf};
+        unsigned * movable ptr=move(buffers[0]);
+        g_pageTable[1].buffer=move(ptr);
+*/
+        //unsigned*movable p=(unsigned*movable)&buf[0];
+        //p=&*(unsigned*movable)buf;
+        //vp.buffer=move(p);
     }
+
 }
 //Supervisor
 tVirtPage*unsafe vsResolveVirtualAddress(uintptr_t &address){

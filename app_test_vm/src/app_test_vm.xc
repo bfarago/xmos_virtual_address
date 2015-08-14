@@ -20,7 +20,7 @@ on SDRAMTILE : clock sdram_cb = XS1_CLKBLK_2;
 
 
 unsigned g_testbuf[3]; //global variable will be allocated on that tile(s) where we are refferencing to it... hm.
-unsigned g_buf[128]; //sizeof(unsigned)*32 bytes
+unsigned g_buf[128]; //this buffer will be used for cache the sdram page.
 
 static void virtaddr_test(
         client interface memory_extender mem[extenders], const unsigned extenders,
@@ -41,8 +41,11 @@ static void virtaddr_test(
   //bush layout is used for the page registration.
   //actually, linked lists starting from root items, which is registered in segm records...
 
-  //Skips malloc because of this
-  //vsSetBufferForPage(g_pageTable[1], g_buf, 128);
+  //Skips malloc because of this, try to set movable (because of the sdram lib requires that way)
+  vsSetBufferForPage(g_pageTable[1], g_buf, 128); //sdram related predefinied page
+  //here comes the trouble :) How can be do this better?
+  unsigned * movable buffers[1]={g_buf}; // see comment at the end of this function. ***
+  g_pageTable[1].buffer=move(buffers[0]);
 
   memory_extender_handler_install(); //exception handler installed
 
@@ -72,6 +75,7 @@ static void virtaddr_test(
     tVirtPage*unsafe page= vsResolveVirtualAddress(tr);
     printhexln((unsigned)tr);
 
+    printstrln("file test started");
     //test paging on file
     //it will create/appends for first time, which is slow.
     p = vsTranslate(512, 3); //segm#3 is a regular binary file on dev pc. wow. :)
@@ -102,12 +106,21 @@ static void virtaddr_test(
     for (int i=0; i<10; i++,p++){
         *p=i; //bug: known, last page will not be stored yet. :(
     }
-    for (int i=0; i<10; i++) if (p[i]!=i) {
-       printhexln(p[i]);
+    p = vsTranslate(128, 2); //sdram
+    for (int i=0; i<10; i++, p++) if (*p!=i) {
+       printhexln(*p);
     }
     pgr[1].commit(); //not implemented yet. yep.
     printstrln("sdram test finished");
 #endif
+  }
+  // ***stay in scope. Impossible to return from here because of the global movable ptr was used to fill a local movable ptr,
+  //and it will be destroyed when stack leaved. The synthetized runtime check code of the local movable ptr will stops at
+  //ecallf, it gives ET_ECALL because of the rule described in the Programmers guide:
+  //"Movable pointers cannot refer to de-allocated memory. To ensure this the following restriction applies:
+  //A movable pointer must point to the same region it was initialized with when it goes out of scope.
+  //A runtime check is inserted to ensure this (so an exception can happen when the pointer goes out of scope)."
+  while(1){
   }
 }
 /*
@@ -116,8 +129,9 @@ static void virtaddr_test(
  - commit only if page reused, or commit/store called
  - default page allocation size handling
  - heap or similar datastructure (btree, trie, whatever)
- - unittest
+ - unittest (actually we just use hardcoded print fn)
  - if file based interface works, next one can be sdram.
+ - benchmark & refactoring the code to asm
  */
 int main()
 {
