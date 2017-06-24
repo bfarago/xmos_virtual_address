@@ -28,7 +28,7 @@ static void virtaddr_test(
 {
   vsInit();//reset globals, need to call for each tile where handler must be installed
   vsConfigSegm(1, 0x10000, 64*1024, OT_LOCALRAM); //0x81xx xxxx is used for local ram 0x0001 xxxx space
-  vsConfigSegm(2, 0, 256*1024, OT_SDRAM); //preliminary, but some sdram will be here
+  vsConfigSegm(2, 0, 2*1024*1024, OT_SDRAM); //preliminary, but some sdram will be here
   vsConfigSegm(3, 0, 1024*1024, OT_FILE); //preliminary, devpc file
   unsafe{
       vsInstallSegmIfunsafe(g_segmTable[1],  &mem[0], &pgr[0]); //install on destination tile
@@ -102,14 +102,34 @@ static void virtaddr_test(
 
 #ifdef TEST_SDRAM
     p = vsTranslate(128, 2); //sdram
-    for (int i=0; i<10; i++,p++){
+    for (int i=0; i<256*1024; i++,p++){
         *p=i; //bug: known, last page will not be stored yet. :(
     }
-    p = vsTranslate(128, 2); //re
-    for (int i=0; i<10; i++, p++) if (*p!=i) {
-       printhexln(*p);
-    }
     pgr[1].commit(); //not implemented yet. yep.
+    p = vsTranslate(128, 2); //re
+    for (int i=0; i<256*1024; i++) if (p[i]!=i) {
+       printhexln(p[i]);
+    }
+    tr=(uintptr_t)p+1024;
+    printhexln((unsigned)tr);
+    tr&=~0x80000000U; //handler does it first step, so we do it here
+    page= vsResolveVirtualAddress(tr);
+    printhexln((unsigned)tr);
+
+    p = vsTranslate(10, 2); //sdram
+    tr=(uintptr_t)p;
+    printhexln((unsigned)tr);
+    tr&=~0x80000000U; //handler does it first step, so we do it here
+    page= vsResolveVirtualAddress(tr);
+    printhexln((unsigned)tr);
+
+    p ++; //same page
+    tr=(uintptr_t)p;
+    printhexln((unsigned)tr);
+    tr&=~0x80000000U; //handler does it first step, so we do it here
+    page= vsResolveVirtualAddress(tr);
+    printhexln((unsigned)tr);
+
     printstrln("sdram test finished");
 #endif
   }

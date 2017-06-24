@@ -17,13 +17,14 @@ USED_MODULES = lib_sdram lib_slicekit_support lib_virtaddr
 # If the variable XCC_MAP_FLAGS is set it overrides the flags passed to
 # xcc for the final link (mapping) stage.
 XCC_FLAGS = -O0 -g
+XCC_MAP_FLAGS = -Xmapper --map -Xmapper $(APP_NAME).map
 
 # The XCORE_ARM_PROJECT variable, if set to 1, configures this
 # project to create both xCORE and ARM binaries.
 XCORE_ARM_PROJECT = 0
 
 # The VERBOSE variable, if set to 1, enables verbose output from the make system.
-VERBOSE = 0
+VERBOSE = 1
 
 XMOS_MAKE_PATH ?= ../..
 -include $(XMOS_MAKE_PATH)/xcommon/module_xcommon/build/Makefile.common
