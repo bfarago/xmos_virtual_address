@@ -131,7 +131,8 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
                        page->length=BUFFER_SIZE;
                        page->localMemPtr=(uintptr_t)malloc(BUFFER_SIZE);
                        //page->buffer=page->localMemPtr;
-                       page->flags&=~PF_MODIFIED;
+                       //page->flags&=~PF_MODIFIED;
+                       page->flags= page->flags & ~PF_MODIFIED;
                        page->base=address;
                     }
 
@@ -139,19 +140,22 @@ void virtaddr_sdram(server interface memory_extender mem, server interface virt_
                     uintptr_t lend=page->length+page->base;
                     if ((address<lend)&&(loff<page->length)){
                         address=page->localMemPtr+loff; //cache hit
-                        page->flags|=PF_MODIFIED;
+                        //page->flags|=PF_MODIFIED;
+                        page->flags=page->flags|PF_MODIFIED;
                         break;
                     }
 
                     if (page->flags& PF_MODIFIED){ //flush previous
                         virtaddr_sdramWrite(page, sdram_state_client, c_sdram_client);
-                        page->flags&=~PF_MODIFIED;
+                        //page->flags&=~PF_MODIFIED;
+                        page->flags=page->flags&~PF_MODIFIED;
                     }
                     // sdram specific strategy will be here
                     page->base=address;
                     virtaddr_sdramRead(page, sdram_state_client, c_sdram_client);
                     address=page->localMemPtr; //TODO: offset if aligned?!
-                    page->flags|=PF_MODIFIED;
+                    //page->flags|=PF_MODIFIED;
+                    page->flags=page->flags|PF_MODIFIED;
                 }
                 break;
             case pgr.storePage(tVirtPage*unsafe page):
@@ -187,7 +191,7 @@ void virtaddr_devpc_file(server interface memory_extender mem, server interface 
                        page->length=BUFFER_SIZE;
                        buf=malloc(BUFFER_SIZE);
                        page->localMemPtr=(uintptr_t)buf;
-                       page->flags&=~PF_MODIFIED;
+                       page->flags=page->flags&~PF_MODIFIED;
                     }else{//already allocated
                        buf =(char*)page->localMemPtr;
                     }
@@ -195,7 +199,7 @@ void virtaddr_devpc_file(server interface memory_extender mem, server interface 
                     uintptr_t lend=page->length+page->base;
                     if ((address<lend)&&(loff<page->length)){
                         address=page->localMemPtr+loff; //cache hit
-                        page->flags|=PF_MODIFIED;
+                        page->flags=page->flags|PF_MODIFIED;
                         break;
                     }
                     //page change
@@ -212,7 +216,7 @@ void virtaddr_devpc_file(server interface memory_extender mem, server interface 
                             printstrln("Error: flush");
                             break;
                         }
-                        page->flags&=~PF_MODIFIED;
+                        page->flags=page->flags&~PF_MODIFIED;
                     }
 
                     ___off_t nend= page->length+ address;
@@ -232,7 +236,7 @@ void virtaddr_devpc_file(server interface memory_extender mem, server interface 
                         printstrln("Error: _close failed.");
                         break;
                     }
-                    page->flags|=PF_MODIFIED;
+                    page->flags=page->flags|PF_MODIFIED;
                 };
 
 
